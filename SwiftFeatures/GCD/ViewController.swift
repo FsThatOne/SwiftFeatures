@@ -10,20 +10,27 @@ import UIKit
 
 class ViewController: UIViewController {
 
-    var tableView: UITableView = {
+    lazy var tableView: UITableView = {
         let table = UITableView(frame: UIScreen.main.bounds)
         table.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         return table
     }()
     
-    var dataSource: Array<String> = ["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行"]
+    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], []]
+    
+    override func loadView() {
+        tableView.dataSource = self
+        tableView.delegate = self
+        view = tableView
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
     }
     
-    // 串行队列同步执行
+    /// 基础
+    // 队列同步执行
     func performQueueSynchronization(queue: DispatchQueue) {
         for i in 1...10 {
             queue.sync {
@@ -34,10 +41,10 @@ class ViewController: UIViewController {
         }
         print("所有同步线程已执行完毕")
     }
-    // 串行队列异步执行
+    // 队列异步执行
     func performQueueAsynchronization(queue: DispatchQueue) {
         for i in 1...10 {
-            queue.sync {
+            queue.async {
                 self.sleepFor(period: 1)
                 print("当前执行线程为:\(self.currentThread())")
                 print("执行\(i)")
@@ -45,8 +52,109 @@ class ViewController: UIViewController {
         }
         print("所有同步线程已执行完毕")
     }
-
+    // 串行队列异步延迟执行
+    func deferPerform(queue: DispatchQueue, delay time: TimeInterval) {
+        let item = DispatchWorkItem(qos: DispatchQoS.default, flags: .noQoS) { 
+            print("当前线程为\(self.currentThread())")
+        }
+        let timeSince1970 = Date().timeIntervalSince1970
+        let wallTime = DispatchWallTime(timespec: timespec(tv_sec: Int(timeSince1970 + time), tv_nsec: 0))
+        queue.asyncAfter(wallDeadline: wallTime, execute: item)
+    }
+    // 全局队列优先级
+    func globalQueuePriority() {
+        getGlobalQueue(priority: .utility).async {
+            print("优先级: utility -- 当前线程: \(self.currentThread())")
+        }
+        getGlobalQueue(priority: .background).async {
+            print("优先级: background -- 当前线程: \(self.currentThread())")
+        }
+        getGlobalQueue(priority: .default).async {
+            print("优先级: default -- 当前线程: \(self.currentThread())")
+        }
+        getGlobalQueue(priority: .userInitiated).async {
+            print("优先级: userInitiated -- 当前线程: \(self.currentThread())")
+        }
+        getGlobalQueue(priority: .userInteractive).async {
+            print("优先级: userInteractive -- 当前线程: \(self.currentThread())")
+        }
+        let queue = getGlobalQueue()
+        queue.setTarget(queue: getGlobalQueue(priority: .utility))
+        queue.async {
+            print("优先级: utility -- 当前线程: \(self.currentThread())")
+        }
+    }
+    // 为自己创建的queue设置优先级
+    func setPriorityForMyQueue() {
+        let queue = getGlobalQueue()
+        queue.setTarget(queue: getGlobalQueue(priority: .utility))
+        queue.async {
+            print("优先级: utility -- 当前线程: \(self.currentThread())")
+        }
+    }
+    // 队列与组自动关联并异步执行
+    func performGroupAutoQueue() {
+        print("任务组自动管理")
+        let conQueue = getConcurrentQueue(queueId: "concurrentQueue")
+        let group = DispatchGroup()
+        for i in 1...5 {
+            conQueue.async(group: group) {
+                self.sleepFor(period: 1)
+                print("任务\(i)执行完毕")
+            }
+        }
+        group.notify(queue: getMainThread()) { 
+            print("所有任务执行完了")
+        }
+        print("异步执行测试,不会阻塞当前线程")
+    }
+    // 队列与组手动关联并异步执行
+    func performGroupManualQueue() {
+        print("任务组手动管理")
+        let conQueue = getConcurrentQueue(queueId: "concurrentQueue")
+        let group = DispatchGroup()
+        for i in 1...5 {
+            group.enter()
+            conQueue.async() {
+                if i == 3 {
+                    self.sleepFor(period: 3)
+                } else {
+                    self.sleepFor(period: 1)
+                }
+                print("任务\(i)执行完毕")
+                group.leave()
+            }
+        }
+        let result = group.wait(timeout: DispatchTime.now() + 1)
+        if result == .timedOut {
+            print("超时")
+            return
+        }
+        group.notify(queue: getMainThread()) {
+            print("所有任务执行完了")
+        }
+        print("异步执行测试,不会阻塞当前线程")
+    }
+    // 信号量同步锁
+    func performSemaphoreLock() {
+        let concurrentQueue = getConcurrentQueue(queueId: "con")
+        
+        let semaphore = DispatchSemaphore(value: 3)
+        var tempCount = 0
+        for _ in 1...10 {
+            concurrentQueue.async {
+                semaphore.wait()
+                self.sleepFor(period: 2)
+                print("\(self.currentThread())")
+                tempCount += 1
+                semaphore.signal()
+            }
+        }
+        
+        print("异步信号量测试")
+    }
     
+    // 进阶
 }
 
 extension ViewController {
@@ -82,11 +190,23 @@ extension ViewController {
 
 extension ViewController: UITableViewDataSource {
     func numberOfSections(in tableView: UITableView) -> Int {
-        return 1
+        return 2
+    }
+    
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        if section == 0 {
+            return "基础"
+        } else {
+            return "进阶"
+        }
+    }
+    
+    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+        return 80
     }
     
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return 10
+        return dataSource[section].count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -103,24 +223,56 @@ extension ViewController: UITableViewDataSource {
 
 extension ViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        switch indexPath.row {
-        case 0:
+        switch (indexPath.section, indexPath.row) {
+        // 基础
+        case (0, 0):
+            performQueueSynchronization(queue: getSerialQueue(queueId: "serial"))
             break
-        case 1:
+        case (0, 1):
+            performQueueAsynchronization(queue: getSerialQueue(queueId: "serial"))
             break
-        case 2:
+        case (0, 2):
+            performQueueSynchronization(queue: getConcurrentQueue(queueId: "concurrent"))
             break
-        case 3:
+        case (0, 3):
+            performQueueAsynchronization(queue: getConcurrentQueue(queueId: "concurrent"))
             break
-        case 4:
+        case (0, 4):
+            deferPerform(queue: getSerialQueue(queueId: "serialDelay") ,delay: 3)
             break
-        case 5:
+        case (0, 5):
+            globalQueuePriority()
             break
-        case 6:
+        case (0, 6):
+            setPriorityForMyQueue()
             break
-        case 7:
+        case (0, 7):
+            performGroupAutoQueue()
             break
-        case 8:
+        case (0, 8):
+            performGroupManualQueue()
+            break
+        case (0, 9):
+            performSemaphoreLock()
+            break
+        // 进阶
+        case (1,0):
+            break
+        case (1,1):
+            break
+        case (1,2):
+            break
+        case (1,3):
+            break
+        case (1,4):
+            break
+        case (1,5):
+            break
+        case (1,6):
+            break
+        case (1,7):
+            break
+        case (1,8):
             break
         default:
             break
