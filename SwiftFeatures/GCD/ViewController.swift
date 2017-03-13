@@ -16,7 +16,7 @@ class ViewController: UIViewController {
         return table
     }()
     
-    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], ["队列的挂起和唤醒", "任务栅栏"]]
+    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], ["队列的挂起和唤醒", "任务栅栏", "源事件 - add", "源事件 - 定时器"]]
     
     override func loadView() {
         tableView.dataSource = self
@@ -187,6 +187,38 @@ class ViewController: UIViewController {
         }
         
     }
+    // 源事件 - add
+    func sourceAdd() {
+        let sourceQueue = getGlobalQueue()
+        let source = DispatchSource.makeUserDataAddSource(queue: sourceQueue)
+        
+        source.setEventHandler {
+            print("源中的数据和为: \(source.data)")
+        }
+        source.resume()
+        for i in 1...6 {
+            self.sleepFor(period: 1)
+            source.add(data: UInt(i))
+        }
+    }
+    // 源事件 - 定时器
+    func sourceTimer() {
+        let sourceQueue = getGlobalQueue()
+        let source = DispatchSource.makeTimerSource(flags: .strict, queue: sourceQueue)
+        var timeOut = 10
+        source.scheduleRepeating(deadline: DispatchTime.now(), interval: 1)
+        source.setEventHandler {
+            print("每隔1秒执行一次")
+            timeOut -= 1;
+            if timeOut <= 0 {
+                source.cancel()
+            }
+        }
+        source.resume()
+        source.setCancelHandler {
+            print("执行完了")
+        }
+    }
 }
 
 extension ViewController {
@@ -295,8 +327,10 @@ extension ViewController: UITableViewDelegate {
             barrier()
             break
         case (1,2):
+            sourceAdd()
             break
         case (1,3):
+            sourceTimer()
             break
         case (1,4):
             break
