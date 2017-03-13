@@ -16,7 +16,7 @@ class ViewController: UIViewController {
         return table
     }()
     
-    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], ["队列的挂起和唤醒"]]
+    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], ["队列的挂起和唤醒", "任务栅栏"]]
     
     override func loadView() {
         tableView.dataSource = self
@@ -166,6 +166,27 @@ class ViewController: UIViewController {
         sleepFor(period: 5)
         queue.resume()
     }
+    // 任务栅栏
+    func barrier() {
+        let barrierQueue = getConcurrentQueue(queueId: "barrier")
+        for i in 1...5 {
+            barrierQueue.async {
+                self.sleepFor(period: TimeInterval(i))
+                print("这是i任务 - \(i) - \(self.currentThread())")
+            }
+        }
+        let workItem = DispatchWorkItem(qos: .default, flags: [.barrier]) { 
+            print("所有的i任务都在此之前,所有的j任务都在此之后 - \(self.currentThread())")
+        }
+        barrierQueue.async(execute: workItem)
+        for j in 1...5 {
+            barrierQueue.async {
+                self.sleepFor(period: TimeInterval(j))
+                print("这是j任务 - \(j) - \(self.currentThread())")
+            }
+        }
+        
+    }
 }
 
 extension ViewController {
@@ -271,6 +292,7 @@ extension ViewController: UITableViewDelegate {
             suspendAndWake()
             break
         case (1,1):
+            barrier()
             break
         case (1,2):
             break
