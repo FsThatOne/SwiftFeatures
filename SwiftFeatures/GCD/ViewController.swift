@@ -16,7 +16,7 @@ class ViewController: UIViewController {
         return table
     }()
     
-    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], []]
+    var dataSource: Array<[String]> = [["串行队列同步执行", "串行队列异步执行", "并行队列同步执行", "并行队列异步执行", "串行队列异步延迟执行", "全局队列优先级", "为自己创建的queue设置优先级", "队列与组自动关联并异步执行", "队列与组手动关联并异步执行", "信号量同步锁"], ["队列的挂起和唤醒"]]
     
     override func loadView() {
         tableView.dataSource = self
@@ -154,7 +154,18 @@ class ViewController: UIViewController {
         print("异步信号量测试")
     }
     
-    // 进阶
+    /// 进阶
+    // 队列的挂起和唤醒
+    func suspendAndWake() {
+        let queue = getConcurrentQueue(queueId: "suspdnd")
+        queue.suspend()
+        queue.async {
+            print("唤醒了")
+        }
+        print("挂起五秒")
+        sleepFor(period: 5)
+        queue.resume()
+    }
 }
 
 extension ViewController {
@@ -211,11 +222,11 @@ extension ViewController: UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if let cell = tableView.dequeueReusableCell(withIdentifier: "cell") {
-            cell.textLabel?.text = dataSource[indexPath.row]
+            cell.textLabel?.text = dataSource[indexPath.section][indexPath.row]
             return cell
         } else {
             let cell = UITableViewCell(style: .default, reuseIdentifier: "cell")
-            cell.textLabel?.text = dataSource[indexPath.row]
+            cell.textLabel?.text = dataSource[indexPath.section][indexPath.row]
             return cell
         }
     }
@@ -257,6 +268,7 @@ extension ViewController: UITableViewDelegate {
             break
         // 进阶
         case (1,0):
+            suspendAndWake()
             break
         case (1,1):
             break
